@@ -16,10 +16,21 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const BACKUP_KEY = 'mymoney.internal-backup-key.v1';
 const BACKUP_PASSWORD_KEY = 'mymoney.backup-password.v1';
+const PREPARED_BACKUP_KEY = 'mymoney.backup-derived-key.v1';
+const BACKUP_KDF_ITERATIONS = 310_000;
 const secureStoreOptions: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timestamp = z.string().datetime();
 const nullableText = z.string().nullable();
+
+type BackupCredential = { version: 2; id: string; password: string };
+type PreparedBackupKey = { version: 1; credentialId: string; iterations: number; salt: string; key: string };
+
+let backupCredentialCache: BackupCredential | null | undefined;
+let backupCredentialRequest: Promise<BackupCredential | null> | null = null;
+let preparedBackupKeyCache: PreparedBackupKey | null | undefined;
+let preparedBackupKeyRequest: Promise<PreparedBackupKey | null> | null = null;
+let prepareBackupKeyRequest: Promise<PreparedBackupKey | null> | null = null;
 
 const categorySchema = z.object({
   id: z.string().min(1), name_en: z.string().min(1), name_uz: z.string(),
@@ -78,31 +89,136 @@ async function passwordKey(password: string, salt: Uint8Array, iterations: numbe
   return AESEncryptionKey.import(bytes);
 }
 
+function parseBackupCredential(raw: string): { credential: BackupCredential; legacy: boolean } {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (typeof value === 'object' && value !== null && 'version' in value && value.version === 2 && 'id' in value && typeof value.id === 'string' && 'password' in value && typeof value.password === 'string') {
+      return { credential: { version: 2, id: value.id, password: value.password }, legacy: false };
+    }
+  } catch {}
+  return { credential: { version: 2, id: Crypto.randomUUID(), password: raw }, legacy: true };
+}
+
+async function loadBackupCredential(): Promise<BackupCredential | null> {
+  if (backupCredentialCache !== undefined) return backupCredentialCache;
+  if (backupCredentialRequest) return backupCredentialRequest;
+  backupCredentialRequest = SecureStore.getItemAsync(BACKUP_PASSWORD_KEY, secureStoreOptions)
+    .then(async (raw) => {
+      const parsed = raw ? parseBackupCredential(raw) : null;
+      const credential = parsed?.credential ?? null;
+      if (parsed?.legacy) {
+        await SecureStore.setItemAsync(BACKUP_PASSWORD_KEY, JSON.stringify(parsed.credential), secureStoreOptions);
+      }
+      backupCredentialCache = credential;
+      return credential;
+    })
+    .finally(() => { backupCredentialRequest = null; });
+  return backupCredentialRequest;
+}
+
+function parsePreparedBackupKey(raw: string): PreparedBackupKey {
+  const value = JSON.parse(raw) as Partial<PreparedBackupKey>;
+  if (value.version !== 1 || typeof value.credentialId !== 'string' || !Number.isSafeInteger(value.iterations) || (value.iterations ?? 0) <= 0 || typeof value.salt !== 'string' || typeof value.key !== 'string') {
+    throw new Error('The prepared backup key is invalid.');
+  }
+  return { version: 1, credentialId: value.credentialId, iterations: value.iterations!, salt: value.salt, key: value.key };
+}
+
+async function loadPreparedBackupKey(): Promise<PreparedBackupKey | null> {
+  if (preparedBackupKeyCache !== undefined) return preparedBackupKeyCache;
+  if (preparedBackupKeyRequest) return preparedBackupKeyRequest;
+  preparedBackupKeyRequest = SecureStore.getItemAsync(PREPARED_BACKUP_KEY, secureStoreOptions)
+    .then((raw) => {
+      const prepared = raw ? parsePreparedBackupKey(raw) : null;
+      preparedBackupKeyCache = prepared;
+      return prepared;
+    })
+    .finally(() => { preparedBackupKeyRequest = null; });
+  return preparedBackupKeyRequest;
+}
+
 export async function hasSavedBackupPassword(): Promise<boolean> {
-  return Boolean(await SecureStore.getItemAsync(BACKUP_PASSWORD_KEY, secureStoreOptions));
+  return Boolean(await loadBackupCredential());
 }
 
 export async function getSavedBackupPassword(): Promise<string | null> {
-  return SecureStore.getItemAsync(BACKUP_PASSWORD_KEY, secureStoreOptions);
+  return (await loadBackupCredential())?.password ?? null;
 }
 
 export async function saveBackupPassword(password: string): Promise<void> {
   if (password.length < 8) throw new Error('Use a backup password with at least 8 characters.');
-  await SecureStore.setItemAsync(BACKUP_PASSWORD_KEY, password, secureStoreOptions);
+  const credential: BackupCredential = { version: 2, id: Crypto.randomUUID(), password };
+  await Promise.all([
+    SecureStore.setItemAsync(BACKUP_PASSWORD_KEY, JSON.stringify(credential), secureStoreOptions),
+    SecureStore.deleteItemAsync(PREPARED_BACKUP_KEY, secureStoreOptions),
+  ]);
+  backupCredentialCache = credential;
+  preparedBackupKeyCache = null;
+}
+
+async function encryptBackupWithKey(document: BackupDocument, key: AESEncryptionKey, salt: Uint8Array, iterations: number): Promise<string> {
+  const sealed = await aesEncryptAsync(textEncoder.encode(JSON.stringify(document)), key, { nonce: { length: 12 }, tagLength: 16 });
+  return JSON.stringify({ format: 'my-money-encrypted', version: 1, kdf: { name: 'PBKDF2-HMAC-SHA256', iterations, salt: fromByteArray(salt) }, cipher: { name: 'AES-256-GCM', combined: await sealed.combined('base64') } });
+}
+
+export async function prepareSavedBackupPassword(): Promise<void> {
+  while (true) {
+    const credential = await loadBackupCredential();
+    if (!credential) return;
+    const prepared = await loadPreparedBackupKey();
+    if (prepared?.credentialId === credential.id) return;
+    if (!prepareBackupKeyRequest) {
+      prepareBackupKeyRequest = (async () => {
+        const salt = await Crypto.getRandomBytesAsync(16);
+        const key = await passwordKey(credential.password, salt, BACKUP_KDF_ITERATIONS);
+        if (backupCredentialCache?.id !== credential.id) return null;
+        const next: PreparedBackupKey = {
+          version: 1,
+          credentialId: credential.id,
+          iterations: BACKUP_KDF_ITERATIONS,
+          salt: fromByteArray(salt),
+          key: await key.encoded('base64'),
+        };
+        await SecureStore.setItemAsync(PREPARED_BACKUP_KEY, JSON.stringify(next), secureStoreOptions);
+        preparedBackupKeyCache = next;
+        return next;
+      })().finally(() => { prepareBackupKeyRequest = null; });
+    }
+    await prepareBackupKeyRequest;
+  }
 }
 
 export async function encryptBackup(document: BackupDocument, password: string): Promise<string> {
   if (password.length < 8) throw new Error('Use a backup password with at least 8 characters.');
-  const salt = await Crypto.getRandomBytesAsync(16); const iterations = 310_000;
-  const key = await passwordKey(password, salt, iterations);
-  const sealed = await aesEncryptAsync(textEncoder.encode(JSON.stringify(document)), key, { nonce: { length: 12 }, tagLength: 16 });
-  return JSON.stringify({ format: 'my-money-encrypted', version: 1, kdf: { name: 'PBKDF2-HMAC-SHA256', iterations, salt: fromByteArray(salt) }, cipher: { name: 'AES-256-GCM', combined: await sealed.combined('base64') } });
+  const salt = await Crypto.getRandomBytesAsync(16);
+  const key = await passwordKey(password, salt, BACKUP_KDF_ITERATIONS);
+  return encryptBackupWithKey(document, key, salt, BACKUP_KDF_ITERATIONS);
+}
+
+async function getPreparedPasswordKey(password: string, salt: string, iterations: number): Promise<AESEncryptionKey | null> {
+  const credential = await loadBackupCredential();
+  if (!credential || credential.password !== password) return null;
+  const prepared = await loadPreparedBackupKey();
+  if (!prepared || prepared.credentialId !== credential.id || prepared.salt !== salt || prepared.iterations !== iterations) return null;
+  return AESEncryptionKey.import(prepared.key, 'base64');
+}
+
+async function encryptBackupWithSavedPassword(document: BackupDocument, password: string): Promise<string> {
+  const credential = await loadBackupCredential();
+  if (!credential || credential.password !== password) return encryptBackup(document, password);
+  await prepareSavedBackupPassword();
+  const prepared = await loadPreparedBackupKey();
+  if (!prepared || prepared.credentialId !== credential.id) return encryptBackup(document, password);
+  const key = await getPreparedPasswordKey(password, prepared.salt, prepared.iterations);
+  if (!key) return encryptBackup(document, password);
+  return encryptBackupWithKey(document, key, toByteArray(prepared.salt), prepared.iterations);
 }
 
 export async function decryptBackup(contents: string, password: string): Promise<BackupDocument> {
   const wrapper = encryptedSchema.parse(JSON.parse(contents));
   try {
-    const key = await passwordKey(password, toByteArray(wrapper.kdf.salt), wrapper.kdf.iterations);
+    const key = await getPreparedPasswordKey(password, wrapper.kdf.salt, wrapper.kdf.iterations)
+      ?? await passwordKey(password, toByteArray(wrapper.kdf.salt), wrapper.kdf.iterations);
     const sealed = AESSealedData.fromCombined(wrapper.cipher.combined, { ivLength: 12, tagLength: 16 });
     const bytes = await aesDecryptAsync(sealed, key);
     const document = backupSchema.parse(JSON.parse(textDecoder.decode(bytes)));
@@ -122,7 +238,7 @@ export async function exportPlainBackup(): Promise<void> {
 }
 
 export async function exportEncryptedBackup(password: string): Promise<void> {
-  const document = await createDocument(); const contents = await encryptBackup(document, password);
+  const document = await createDocument(); const contents = await encryptBackupWithSavedPassword(document, password);
   const file = writeCacheFile(`wallet-manager-${document.exportedAt.slice(0, 10)}.mymoney`, contents);
   if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
   await Sharing.shareAsync(file.uri, { mimeType: 'application/octet-stream', dialogTitle: 'Choose Google Drive to save your encrypted backup' });

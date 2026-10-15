@@ -1,9 +1,10 @@
 import * as LocalAuthentication from 'expo-local-authentication';
+import { useQueryClient } from '@tanstack/react-query';
 import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getSettings } from '@/data/repository';
 import { recordError } from '@/errors/error-log';
-import { getPinDigits, hasPin, savePin, verifyPin } from './auth';
+import { getPinStatus, savePin, verifyPin } from './auth';
 
 export type SessionStatus = 'loading' | 'setup' | 'locked' | 'unlocked' | 'error';
 type SessionValue = {
@@ -23,6 +24,7 @@ type SessionValue = {
 const SessionContext = createContext<SessionValue | null>(null);
 
 export function SessionProvider({ children }: PropsWithChildren) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [deviceAuthenticationAvailable, setDeviceAuthenticationAvailable] = useState(false);
@@ -33,18 +35,20 @@ export function SessionProvider({ children }: PropsWithChildren) {
     setStatus('loading');
     setInitializationError(null);
     try {
-      const [settings, pinExists, authenticationLevel, digits] = await Promise.all([
-        getSettings(), hasPin(), LocalAuthentication.getEnrolledLevelAsync(), getPinDigits(),
+      const [settings, pinStatus] = await Promise.all([
+        queryClient.fetchQuery({ queryKey: ['settings'], queryFn: getSettings, staleTime: 10_000 }), getPinStatus(),
       ]);
-      setDeviceAuthenticationAvailable(authenticationLevel !== LocalAuthentication.SecurityLevel.NONE);
-      setPinDigits(digits);
-      setStatus(settings.onboardingCompleted && pinExists ? 'locked' : 'setup');
+      setPinDigits(pinStatus.digits);
+      setStatus(settings.onboardingCompleted && pinStatus.exists ? 'locked' : 'setup');
+      void LocalAuthentication.getEnrolledLevelAsync()
+        .then((level) => setDeviceAuthenticationAvailable(level !== LocalAuthentication.SecurityLevel.NONE))
+        .catch((error: unknown) => { void recordError('Device authentication check', error); });
     } catch (error) {
       await recordError('App startup', error);
       setInitializationError(error instanceof Error ? error.message : 'The app could not finish loading.');
       setStatus('error');
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void initialize(); }, 0);
@@ -56,7 +60,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       if (next === 'background' || next === 'inactive') backgroundAt.current = Date.now();
       if (next === 'active' && backgroundAt.current && status === 'unlocked') {
         try {
-          const settings = await getSettings();
+          const settings = await queryClient.fetchQuery({ queryKey: ['settings'], queryFn: getSettings, staleTime: 10_000 });
           const elapsed = Date.now() - backgroundAt.current;
           if (settings.lockTimeoutMinutes === 0 || elapsed >= settings.lockTimeoutMinutes * 60_000) setStatus('locked');
         } catch (error) {
@@ -68,7 +72,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     };
     const subscription = AppState.addEventListener('change', onStateChange);
     return () => subscription.remove();
-  }, [status]);
+  }, [queryClient, status]);
 
   const createPin = useCallback(async (pin: string) => { await savePin(pin); setPinDigits(4); }, []);
   const unlockWithPin = useCallback(async (pin: string) => {

@@ -21,6 +21,13 @@
         "buildType": "apk"
       },
       "channel": "production"
+    },
+    "xiaomi": {
+      "extends": "production",
+      "distribution": "internal",
+      "env": {
+        "ANDROID_BUILD_TARGET": "arm64-v8a"
+      }
     }
   }
 }

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, InteractionManager, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { backupSummary, decryptBackup, exportEncryptedBackup, exportPlainBackup, getSavedBackupPassword, hasSavedBackupPassword, parsePlainBackup, pickBackup, replaceFromBackup, saveBackupPassword, type BackupDocument } from '@/backup/backup';
+import { backupSummary, decryptBackup, exportEncryptedBackup, exportPlainBackup, getSavedBackupPassword, hasSavedBackupPassword, parsePlainBackup, pickBackup, prepareSavedBackupPassword, replaceFromBackup, saveBackupPassword, type BackupDocument } from '@/backup/backup';
 import { Card, ErrorBlock, Field, GhostButton, Header, ListRow, LoadingBlock, LoadingOverlay, PrimaryButton, Screen, Segmented, uiStyles } from '@/components/ui';
 import { MoneyField, PinCodeInput } from '@/components/controls';
 import { getSettings, markBackedUp, updateSettings } from '@/data/repository';
@@ -19,10 +19,17 @@ const launchedAt = Date.now();
 export default function SettingsScreen() {
   const { t } = useI18n(); const router = useRouter(); const queryClient = useQueryClient(); const { deviceAuthenticationAvailable, pinDigits, createPin, lock } = useSession();
   const { data: settings, isLoading: settingsLoading, error: settingsError, refetch: refetchSettings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
-  const backupPasswordQuery = useQuery({ queryKey: ['backup-password'], queryFn: hasSavedBackupPassword });
+  const backupPasswordQuery = useQuery({ queryKey: ['backup-password'], queryFn: hasSavedBackupPassword, staleTime: Infinity });
   const backupPasswordConfigured = backupPasswordQuery.data ?? false;
   const [opening, setOpening] = useState(''); const [rate, setRate] = useState(''); const [passwordAction, setPasswordAction] = useState<PasswordAction | null>(null); const [password, setPassword] = useState(''); const [confirmPassword, setConfirmPassword] = useState(''); const [savingBackup, setSavingBackup] = useState(false); const [restoring, setRestoring] = useState(false);
   const [changePin, setChangePin] = useState(false); const [pinStep, setPinStep] = useState<'current' | 'new' | 'confirm'>('current'); const [currentPin, setCurrentPin] = useState(''); const [newPin, setNewPin] = useState(''); const [confirmPin, setConfirmPin] = useState(''); const [pinChanging, setPinChanging] = useState(false);
+  useEffect(() => {
+    if (!backupPasswordConfigured) return undefined;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void prepareSavedBackupPassword().catch((error: unknown) => { void recordError('Prepare backup security', error); });
+    });
+    return () => task.cancel();
+  }, [backupPasswordConfigured]);
   const update = useMutation({ mutationKey: ['settings-update'], mutationFn: updateSettings, onSuccess: async () => queryClient.invalidateQueries(), onError: (error) => Alert.alert('Settings', error instanceof Error ? error.message : 'The setting could not be saved.') });
   const backupDue = useMemo(() => {
     if (!settings) return false;
