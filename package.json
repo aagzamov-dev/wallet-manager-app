@@ -1,7 +1,7 @@
 {
   "name": "my-money-mobile",
   "main": "expo-router/entry",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@noble/hashes": "^2.4.0",

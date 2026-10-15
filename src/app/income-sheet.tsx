@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { Field, PrimaryButton, uiStyles } from '@/components/ui';
 import { MoneyField } from '@/components/controls';
 import { createIncome } from '@/data/repository';
+import { refreshQueries } from '@/data/query-cache';
 import { parseMoney, today } from '@/domain/money';
 import { recordError } from '@/errors/error-log';
 import { useI18n } from '@/i18n/provider';
@@ -22,7 +23,7 @@ export default function IncomeSheet() {
   const mutation = useMutation({ mutationKey: ['create-income'], mutationFn: createIncome });
   const submit = handleSubmit(async (values) => {
     const amount = parseMoney(values.amount); if (!amount) return Alert.alert(t('amount'), 'Enter an amount greater than zero.');
-    try { await mutation.mutateAsync({ ...values, amount }); await queryClient.invalidateQueries(); await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back(); }
+    try { await mutation.mutateAsync({ ...values, amount }); refreshQueries(queryClient, ['income', 'dashboard', 'settings']); void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back(); }
     catch (error) { void recordError('Save income', error); Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.'); }
   });
   return <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>

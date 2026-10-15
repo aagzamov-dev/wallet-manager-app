@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Card, ErrorBlock, Header, ListRow, LoadingBlock, Screen, uiStyles } from '@/components/ui';
 import { PeriodSelector } from '@/components/controls';
 import { getDashboard, getSettings } from '@/data/repository';
@@ -16,7 +16,7 @@ export default function OverviewScreen() {
   const router = useRouter();
   const [period, setPeriod] = useState(() => createPeriodSelection('month', today()));
   const range = useMemo(() => resolvePeriodRange(period), [period]);
-  const dashboardQuery = useQuery({ queryKey: ['dashboard', range.startDate, range.endDate], queryFn: () => getDashboard(range) });
+  const dashboardQuery = useQuery({ queryKey: ['dashboard', range.startDate, range.endDate], queryFn: () => getDashboard(range), placeholderData: keepPreviousData });
   const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const data = dashboardQuery.data; const settings = settingsQuery.data;
   const money = (value: number) => formatMoney(value, settings?.displayCurrency, settings?.usdRateUzs);
@@ -34,7 +34,7 @@ export default function OverviewScreen() {
       <Text adjustsFontSizeToFit numberOfLines={1} style={styles.walletAmount}>{money(data?.wallet ?? settings?.openingBalance ?? 0)}</Text>
     </LinearGradient>
     <Card style={styles.periodCard}><PeriodSelector value={period} onChange={setPeriod} /></Card>
-    <View style={styles.summaryHeading}><Text style={uiStyles.sectionTitle}>{t('periodSummary')}</Text><Text style={styles.periodCaption}>{formatPeriodLabel(period, language === 'uz' ? 'uz-UZ' : 'en-US')}</Text></View>
+    <View style={styles.summaryHeading}><Text style={uiStyles.sectionTitle}>{t('periodSummary')}</Text><View style={styles.periodStatus}>{dashboardQuery.isFetching && !dashboardQuery.isLoading ? <ActivityIndicator size="small" color={colors.primary} /> : null}<Text style={styles.periodCaption}>{formatPeriodLabel(period, language === 'uz' ? 'uz-UZ' : 'en-US')}</Text></View></View>
     <View style={styles.grid}>
       <Card style={styles.stat}><Text style={uiStyles.label}>{t('totalIncome')}</Text><Text style={[styles.statValue, { color: colors.success }]}>{money(data?.income ?? 0)}</Text></Card>
       <Card style={styles.stat}><Text style={uiStyles.label}>{t('totalExpenses')}</Text><Text style={[styles.statValue, { color: colors.danger }]}>{money(data?.expenses ?? 0)}</Text></Card>
@@ -57,6 +57,7 @@ const styles = StyleSheet.create({
   walletAmount: { color: colors.text, fontSize: 32, fontWeight: '800' },
   periodCard: { padding: spacing.md },
   summaryHeading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: spacing.md },
+  periodStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   periodCaption: { color: colors.secondary, fontSize: 12, fontWeight: '600' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   stat: { width: '48%', flexGrow: 1 },

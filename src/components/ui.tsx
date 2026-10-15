@@ -48,8 +48,12 @@ export function ListRow({ title, subtitle, value, color, onPress, onLongPress }:
     {color ? <View style={[styles.dot, { backgroundColor: color }]} /> : null}
     <View style={styles.rowText}><Text numberOfLines={1} style={styles.rowTitle}>{title}</Text>{subtitle ? <Text numberOfLines={1} style={styles.rowSubtitle}>{subtitle}</Text> : null}</View>
     {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-    {onPress ? <Text aria-hidden style={styles.chevron}>›</Text> : null}
+    {onPress ? <Chevron direction="right" /> : null}
   </Pressable>;
+}
+
+export function Chevron({ direction }: { direction: 'left' | 'right' }) {
+  return <View aria-hidden style={[styles.chevron, direction === 'left' && styles.chevronLeft]} />;
 }
 
 export function Fab({ label, onPress }: { label: string; onPress: () => void }) {
@@ -110,7 +114,8 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
   rowSubtitle: { color: colors.secondary, fontSize: 13 },
   rowValue: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  chevron: { color: colors.secondary, fontSize: 27, lineHeight: 28 },
+  chevron: { width: 10, height: 10, borderRightWidth: 2, borderBottomWidth: 2, borderColor: colors.secondary, transform: [{ rotate: '-45deg' }], marginHorizontal: spacing.xs },
+  chevronLeft: { transform: [{ rotate: '135deg' }] },
   dot: { width: 10, height: 10, borderRadius: 5 },
   fab: { position: 'absolute', right: spacing.lg, bottom: spacing.lg, minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.lg, paddingHorizontal: spacing.lg, elevation: 5 },
   fabText: { color: colors.background, fontSize: 15, fontWeight: '800' },

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, ErrorBlock, Field, GhostButton, Header, ListRow, LoadingBlock, PrimaryButton, Screen, uiStyles } from '@/components/ui';
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryInput } from '@/data/repository';
+import { refreshQueries } from '@/data/query-cache';
 import { useI18n } from '@/i18n/provider';
 import { colors, radius, spacing } from '@/theme/tokens';
 
@@ -16,7 +17,7 @@ export default function CategoriesScreen() {
   const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
   const categories = categoriesQuery.data ?? [];
   const [editing, setEditing] = useState<Editor | null>(null);
-  const refresh = async () => queryClient.invalidateQueries();
+  const refresh = () => refreshQueries(queryClient, ['categories', 'expenses', 'settings']);
   const mutationError = (error: Error) => Alert.alert('Category', error.message || 'The category could not be saved.');
   const add = useMutation({ mutationKey: ['create-category'], mutationFn: createCategory, onSuccess: refresh, onError: mutationError });
   const edit = useMutation({ mutationKey: ['update-category'], mutationFn: ({ id, input }: { id: string; input: CategoryInput }) => updateCategory(id, input), onSuccess: refresh, onError: mutationError });

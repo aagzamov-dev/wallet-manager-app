@@ -2,7 +2,7 @@
 
 Wallet Manager is a private, offline-first Android finance app for everyday money tracking. It is designed for fast one-handed expense entry and keeps financial records on the phone instead of requiring an account, subscription, or backend.
 
-> **Status:** Active development. Android is the supported platform. Current app version: **1.3.0**.
+> **Status:** Active development. Android is the supported platform. Current app version: **1.4.0**.
 
 ## Why Wallet Manager exists
 

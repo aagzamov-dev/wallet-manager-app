@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { PrimaryButton, Screen, uiStyles } from '@/components/ui';
 import { MoneyField } from '@/components/controls';
 import { receiveExpectedIncome } from '@/data/repository';
+import { refreshQueries } from '@/data/query-cache';
 import { formatMoneyInput, parseMoney } from '@/domain/money';
 import { recordError } from '@/errors/error-log';
 import { useI18n } from '@/i18n/provider';
@@ -15,6 +16,6 @@ export default function PaymentSheet() {
   const { expectedId = '', amount = '' } = useLocalSearchParams<{ expectedId: string; amount: string; projectId: string }>(); const { t } = useI18n(); const router = useRouter(); const queryClient = useQueryClient();
   const { control, handleSubmit } = useForm<Form>({ defaultValues: { amount: formatMoneyInput(amount) } });
   const mutation = useMutation({ mutationKey: ['receive-project-payment'], mutationFn: (received: number) => receiveExpectedIncome(expectedId, received) });
-  const submit = handleSubmit(async (values) => { const received = parseMoney(values.amount); const maximum = Number(amount); if (!received || received > maximum) return Alert.alert(t('paymentAmount'), `Enter an amount from 1 to ${maximum}.`); try { await mutation.mutateAsync(received); await queryClient.invalidateQueries(); await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back(); } catch (error) { void recordError('Receive project payment', error); Alert.alert('Payment', error instanceof Error ? error.message : 'The payment could not be saved.'); } });
+  const submit = handleSubmit(async (values) => { const received = parseMoney(values.amount); const maximum = Number(amount); if (!received || received > maximum) return Alert.alert(t('paymentAmount'), `Enter an amount from 1 to ${maximum}.`); try { await mutation.mutateAsync(received); refreshQueries(queryClient, ['income', 'projects', 'expected-income', 'dashboard', 'settings']); void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back(); } catch (error) { void recordError('Receive project payment', error); Alert.alert('Payment', error instanceof Error ? error.message : 'The payment could not be saved.'); } });
   return <Screen><Text style={uiStyles.title}>{t('recordPayment')}</Text><Text style={uiStyles.subtitle}>A partial amount creates income now and a new remainder automatically.</Text><Controller control={control} name="amount" render={({ field: { value, onChange } }) => <MoneyField autoFocus label={`${t('paymentAmount')} (UZS)`} value={value} onChangeText={onChange} />} /><PrimaryButton label={t('recordPayment')} tone="success" onPress={submit} loading={mutation.isPending} /></Screen>;
 }

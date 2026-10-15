@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { MoneyField, PinCodeInput } from '@/components/controls';
 import { Field, PrimaryButton, Screen, uiStyles } from '@/components/ui';
 import { finishOnboarding } from '@/data/repository';
+import { refreshQueries } from '@/data/query-cache';
 import { today } from '@/domain/money';
 import { recordError } from '@/errors/error-log';
 import { useI18n } from '@/i18n/provider';
@@ -48,7 +49,7 @@ export default function SetupScreen() {
     try {
       await createPin(pin);
       await finishOnboarding(amount, openingDate, biometrics && deviceAuthenticationAvailable);
-      await queryClient.invalidateQueries();
+      refreshQueries(queryClient, ['settings', 'categories']);
       completeSetup();
       router.replace('/(tabs)/expenses?compose=1');
     } catch (error) {

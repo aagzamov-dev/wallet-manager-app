@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { ErrorBlock, Field, LoadingBlock, PrimaryButton, uiStyles } from '@/components/ui';
 import { createExpense, listCategories } from '@/data/repository';
+import { refreshQueries } from '@/data/query-cache';
 import { formatMoneyInput, parseMoney, today } from '@/domain/money';
 import { recordError } from '@/errors/error-log';
 import { useI18n } from '@/i18n/provider';
@@ -34,8 +35,8 @@ export default function ExpenseSheet() {
       const category = categories.find((item) => item.id === values.categoryId);
       const title = values.title.trim() || (language === 'uz' ? category?.nameUz : category?.nameEn) || '';
       const expenseId = await mutation.mutateAsync({ ...values, title, amount });
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['expenses'] }), queryClient.invalidateQueries({ queryKey: ['dashboard'] }), queryClient.invalidateQueries({ queryKey: ['categories'] }), queryClient.invalidateQueries({ queryKey: ['settings'] })]);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refreshQueries(queryClient, ['expenses', 'dashboard', 'categories', 'settings']);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissTo({ pathname: '/(tabs)/expenses', params: { saved: expenseId } });
     } catch (error) { void recordError('Save expense', error); Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.'); }
   });

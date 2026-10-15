@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View, type TextInputProps } from 'react-native';
-import { Field, Segmented } from './ui';
+import { Chevron, Field, Segmented } from './ui';
 import { formatMoneyInput } from '@/domain/money';
 import { formatPeriodLabel, shiftPeriod, type PeriodMode, type PeriodSelection } from '@/domain/period';
 import { useI18n } from '@/i18n/provider';
@@ -79,9 +79,9 @@ export function PeriodSelector({ value, onChange }: { value: PeriodSelection; on
       <View style={styles.dateField}><Field label={t('from')} value={value.customStart} onChangeText={(customStart) => onChange({ ...value, customStart })} placeholder="YYYY-MM-DD" maxLength={10} /></View>
       <View style={styles.dateField}><Field label={t('to')} value={value.customEnd} onChangeText={(customEnd) => onChange({ ...value, customEnd })} placeholder="YYYY-MM-DD" maxLength={10} /></View>
     </View> : <View style={styles.periodNavigator}>
-      <Pressable accessibilityRole="button" accessibilityLabel={t('previousPeriod')} onPress={() => onChange(shiftPeriod(value, -1))} style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}><Text style={styles.arrowText}>‹</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('previousPeriod')} onPress={() => onChange(shiftPeriod(value, -1))} style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}><Chevron direction="left" /></Pressable>
       <Text numberOfLines={1} style={styles.periodLabel}>{formatPeriodLabel(value, language === 'uz' ? 'uz-UZ' : 'en-US')}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={t('nextPeriod')} onPress={() => onChange(shiftPeriod(value, 1))} style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}><Text style={styles.arrowText}>›</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('nextPeriod')} onPress={() => onChange(shiftPeriod(value, 1))} style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}><Chevron direction="right" /></Pressable>
     </View>}
   </View>;
 }
@@ -102,7 +102,6 @@ const styles = StyleSheet.create({
   periodNavigator: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   periodLabel: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   arrow: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border },
-  arrowText: { color: colors.text, fontSize: 31, lineHeight: 34, fontWeight: '400' },
   pressed: { opacity: 0.65 },
   customDates: { flexDirection: 'row', gap: spacing.md },
   dateField: { flex: 1 },

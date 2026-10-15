@@ -1,4 +1,3 @@
-import * as LocalAuthentication from 'expo-local-authentication';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -40,8 +39,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
       ]);
       setPinDigits(pinStatus.digits);
       setStatus(settings.onboardingCompleted && pinStatus.exists ? 'locked' : 'setup');
-      void LocalAuthentication.getEnrolledLevelAsync()
-        .then((level) => setDeviceAuthenticationAvailable(level !== LocalAuthentication.SecurityLevel.NONE))
+      void import('expo-local-authentication')
+        .then(async (authentication) => {
+          const level = await authentication.getEnrolledLevelAsync();
+          setDeviceAuthenticationAvailable(level !== authentication.SecurityLevel.NONE);
+        })
         .catch((error: unknown) => { void recordError('Device authentication check', error); });
     } catch (error) {
       await recordError('App startup', error);
@@ -82,7 +84,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
   }, []);
   const unlockWithBiometrics = useCallback(async () => {
     try {
-      const result = await LocalAuthentication.authenticateAsync({
+      const authentication = await import('expo-local-authentication');
+      const result = await authentication.authenticateAsync({
         promptMessage: 'Unlock Wallet Manager', promptSubtitle: 'Use fingerprint, face, or your Android screen lock',
         cancelLabel: 'Use app PIN', disableDeviceFallback: false, biometricsSecurityLevel: 'strong',
       });

@@ -51,10 +51,11 @@ function GuardedNavigator() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade_from_bottom' }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="unlock" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="setup" options={{ gestureEnabled: false, animation: 'none' }} />
+        <Stack.Screen name="unlock" options={{ gestureEnabled: false, animation: 'none' }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="backup" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="categories" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="error-log" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="expense-sheet" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.92], sheetGrabberVisible: true, contentStyle: { backgroundColor: colors.elevated } }} />

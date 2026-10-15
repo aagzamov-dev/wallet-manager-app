@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, EmptyState, ErrorBlock, Fab, Header, ListRow, LoadingBlock } from '@/components/ui';
 import { PeriodSelector } from '@/components/controls';
 import { deleteExpense, getSettings, listCategories, listExpenses } from '@/data/repository';
+import { refreshQueries } from '@/data/query-cache';
 import { formatMoney, today } from '@/domain/money';
 import { createPeriodSelection, resolvePeriodRange } from '@/domain/period';
 import { useI18n } from '@/i18n/provider';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { colors, radius, spacing } from '@/theme/tokens';
 
 export default function ExpensesScreen() {
@@ -18,15 +20,16 @@ export default function ExpensesScreen() {
   const opened = useRef(false);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [categoryId, setCategoryId] = useState('');
   const [period, setPeriod] = useState(() => createPeriodSelection('week', today()));
   const range = useMemo(() => resolvePeriodRange(period), [period]);
   const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
-  const expensesQuery = useQuery({ queryKey: ['expenses', search, categoryId, range.startDate, range.endDate], queryFn: () => listExpenses(search, categoryId || undefined, range) });
+  const expensesQuery = useQuery({ queryKey: ['expenses', debouncedSearch, categoryId, range.startDate, range.endDate], queryFn: () => listExpenses(debouncedSearch, categoryId || undefined, range), placeholderData: keepPreviousData });
   const settings = settingsQuery.data; const categories = categoriesQuery.data ?? [];
   const expenses = useMemo(() => expensesQuery.data ?? [], [expensesQuery.data]);
-  const remove = useMutation({ mutationKey: ['delete-expense'], mutationFn: deleteExpense, onSuccess: async () => queryClient.invalidateQueries(), onError: () => Alert.alert('Expense', 'The expense could not be deleted. The error was saved locally.') });
+  const remove = useMutation({ mutationKey: ['delete-expense'], mutationFn: deleteExpense, onSuccess: () => refreshQueries(queryClient, ['expenses', 'dashboard', 'settings']), onError: () => Alert.alert('Expense', 'The expense could not be deleted. The error was saved locally.') });
 
   useEffect(() => {
     if (params.compose === '1' && !opened.current) { opened.current = true; router.push('/expense-sheet'); }
@@ -39,13 +42,17 @@ export default function ExpensesScreen() {
 
   const sections = useMemo(() => {
     const grouped = new Map<string, typeof expenses>();
-    for (const expense of expenses) grouped.set(expense.date, [...(grouped.get(expense.date) ?? []), expense]);
+    for (const expense of expenses) {
+      const group = grouped.get(expense.date);
+      if (group) group.push(expense);
+      else grouped.set(expense.date, [expense]);
+    }
     return [...grouped.entries()].map(([title, data]) => ({ title, data }));
   }, [expenses]);
   const money = (value: number) => formatMoney(value, settings?.displayCurrency, settings?.usdRateUzs);
   const confirmDelete = (expenseId: string) => Alert.alert('Delete expense?', 'This cannot be undone.', [{ text: t('cancel') }, { text: t('delete'), style: 'destructive', onPress: () => remove.mutate(expenseId) }]);
 
-  const periodTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
+  const periodTotal = useMemo(() => expenses.reduce((sum, item) => sum + item.amount, 0), [expenses]);
 
   return <SafeAreaView edges={['top']} style={styles.page}>
     <View style={styles.top}>
@@ -57,9 +64,9 @@ export default function ExpensesScreen() {
         {categories.map((category) => <Pressable key={category.id} onPress={() => setCategoryId(category.id)} style={[styles.chip, categoryId === category.id && styles.chipSelected]}><View style={[styles.dot, { backgroundColor: category.color }]} /><Text style={styles.chipText}>{language === 'uz' && category.nameUz.trim() ? category.nameUz : category.nameEn}</Text></Pressable>)}
         <Pressable onPress={() => router.push('/categories')} style={styles.chip}><View style={[styles.dot, { backgroundColor: colors.primary }]} /><Text style={styles.chipText}>{t('edit')}</Text></Pressable>
       </ScrollView>
-      <View style={styles.summary}><Text style={styles.summaryLabel}>{expenses.length} records</Text><Text style={styles.summaryValue}>−{money(periodTotal)}</Text></View>
+      <View style={styles.summary}><View style={styles.summaryStatus}><Text style={styles.summaryLabel}>{expenses.length} records</Text>{expensesQuery.isFetching && !expensesQuery.isLoading ? <ActivityIndicator size="small" color={colors.primary} /> : null}</View><Text style={styles.summaryValue}>−{money(periodTotal)}</Text></View>
     </View>
-    <SectionList sections={sections} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} stickySectionHeadersEnabled
+    <SectionList sections={sections} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} stickySectionHeadersEnabled initialNumToRender={12} maxToRenderPerBatch={12} windowSize={7}
       renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}
       renderItem={({ item }) => <Card style={styles.rowCard}><ListRow title={item.title} subtitle={language === 'uz' ? item.categoryNameUz || item.categoryNameEn || undefined : item.categoryNameEn ?? undefined} value={`−${money(item.amount)}`} color={item.categoryColor ?? colors.secondary} onLongPress={() => confirmDelete(item.id)} /></Card>}
       ListEmptyComponent={expensesQuery.isLoading || categoriesQuery.isLoading ? <LoadingBlock label="Loading expenses…" /> : expensesQuery.error || categoriesQuery.error ? <ErrorBlock message="Expenses could not be loaded. The error was saved locally." onRetry={() => { void expensesQuery.refetch(); void categoriesQuery.refetch(); }} /> : <EmptyState title={t('emptyExpenses')} />} />
@@ -79,7 +86,7 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontWeight: '600' },
   dot: { width: 9, height: 9, borderRadius: 5 },
   summary: { minHeight: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  summaryLabel: { color: colors.secondary, fontSize: 13 }, summaryValue: { color: colors.danger, fontSize: 15, fontWeight: '800' },
+  summaryStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, summaryLabel: { color: colors.secondary, fontSize: 13 }, summaryValue: { color: colors.danger, fontSize: 15, fontWeight: '800' },
   list: { padding: spacing.lg, paddingBottom: 112, gap: spacing.sm, flexGrow: 1 },
   section: { color: colors.secondary, backgroundColor: colors.background, paddingVertical: spacing.sm, fontSize: 13, fontWeight: '700' },
   rowCard: { paddingVertical: 0 },
