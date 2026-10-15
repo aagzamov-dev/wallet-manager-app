@@ -1,10 +1,9 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import {
-  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, type TextInputProps,
+  ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, type TextInputProps,
   View, type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SymbolView } from 'expo-symbols';
 import { colors, radius, spacing } from '@/theme/tokens';
 
 export function Screen({ children, scroll = true, contentStyle }: PropsWithChildren<{ scroll?: boolean; contentStyle?: ViewStyle }>) {
@@ -32,8 +31,8 @@ export function PrimaryButton({ label, onPress, disabled, loading, tone = 'prima
   );
 }
 
-export function GhostButton({ label, onPress, danger = false }: { label: string; onPress: () => void; danger?: boolean }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.ghostButton, pressed && styles.buttonDimmed]}><Text style={[styles.ghostText, danger && { color: colors.danger }]}>{label}</Text></Pressable>;
+export function GhostButton({ label, onPress, danger = false, disabled = false, loading = false }: { label: string; onPress: () => void; danger?: boolean; disabled?: boolean; loading?: boolean }) {
+  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.ghostButton, (pressed || disabled) && styles.buttonDimmed]}>{loading ? <ActivityIndicator color={danger ? colors.danger : colors.primary} /> : <Text style={[styles.ghostText, danger && { color: colors.danger }]}>{label}</Text>}</Pressable>;
 }
 
 export function Field({ label, error, ...props }: TextInputProps & { label: string; error?: string }) {
@@ -49,16 +48,28 @@ export function ListRow({ title, subtitle, value, color, onPress, onLongPress }:
     {color ? <View style={[styles.dot, { backgroundColor: color }]} /> : null}
     <View style={styles.rowText}><Text numberOfLines={1} style={styles.rowTitle}>{title}</Text>{subtitle ? <Text numberOfLines={1} style={styles.rowSubtitle}>{subtitle}</Text> : null}</View>
     {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-    {onPress ? <SymbolView name="chevron.right" tintColor={colors.secondary} size={16} /> : null}
+    {onPress ? <Text aria-hidden style={styles.chevron}>›</Text> : null}
   </Pressable>;
 }
 
 export function Fab({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.fab, pressed && styles.buttonDimmed]}><SymbolView name="plus" tintColor={colors.background} size={24} /><Text style={styles.fabText}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.fab, pressed && styles.buttonDimmed]}><Text aria-hidden style={styles.fabIcon}>+</Text><Text style={styles.fabText}>{label}</Text></Pressable>;
 }
 
 export function EmptyState({ title }: { title: string }) {
-  return <View style={styles.empty}><SymbolView name="tray" tintColor={colors.secondary} size={32} /><Text style={styles.emptyText}>{title}</Text></View>;
+  return <View style={styles.empty}><Text aria-hidden style={styles.emptyIcon}>—</Text><Text style={styles.emptyText}>{title}</Text></View>;
+}
+
+export function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
+  return <View style={styles.feedback}><ActivityIndicator color={colors.primary} /><Text style={styles.feedbackText}>{label}</Text></View>;
+}
+
+export function ErrorBlock({ message = 'Something went wrong.', onRetry }: { message?: string; onRetry?: () => void }) {
+  return <View style={styles.feedback}><Text style={styles.feedbackError}>{message}</Text>{onRetry ? <GhostButton label="Try again" onPress={onRetry} /> : null}</View>;
+}
+
+export function LoadingOverlay({ visible, label = 'Please wait…' }: { visible: boolean; label?: string }) {
+  return <Modal visible={visible} transparent animationType="fade"><View accessibilityRole="progressbar" style={styles.loadingBackdrop}><View style={styles.loadingCard}><ActivityIndicator color={colors.primary} size="large" /><Text style={styles.loadingText}>{label}</Text></View></View></Modal>;
 }
 
 export const uiStyles = StyleSheet.create({
@@ -99,9 +110,18 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
   rowSubtitle: { color: colors.secondary, fontSize: 13 },
   rowValue: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  chevron: { color: colors.secondary, fontSize: 27, lineHeight: 28 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   fab: { position: 'absolute', right: spacing.lg, bottom: spacing.lg, minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.lg, paddingHorizontal: spacing.lg, elevation: 5 },
   fabText: { color: colors.background, fontSize: 15, fontWeight: '800' },
+  fabIcon: { color: colors.background, fontSize: 27, lineHeight: 28, fontWeight: '500' },
   empty: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
+  emptyIcon: { color: colors.secondary, fontSize: 32 },
   emptyText: { color: colors.secondary, fontSize: 15 },
+  feedback: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
+  feedbackText: { color: colors.secondary, fontSize: 15 },
+  feedbackError: { color: colors.danger, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  loadingBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.overlay },
+  loadingCard: { minWidth: 180, alignItems: 'center', gap: spacing.lg, padding: spacing.xl, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated },
+  loadingText: { color: colors.text, fontSize: 15, fontWeight: '600' },
 });

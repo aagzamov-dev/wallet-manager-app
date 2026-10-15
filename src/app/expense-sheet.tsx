@@ -6,9 +6,10 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { Field, PrimaryButton, uiStyles } from '@/components/ui';
+import { ErrorBlock, Field, LoadingBlock, PrimaryButton, uiStyles } from '@/components/ui';
 import { createExpense, listCategories } from '@/data/repository';
 import { formatMoneyInput, parseMoney, today } from '@/domain/money';
+import { recordError } from '@/errors/error-log';
 import { useI18n } from '@/i18n/provider';
 import { colors, radius, spacing } from '@/theme/tokens';
 
@@ -19,11 +20,12 @@ export default function ExpenseSheet() {
   const { t, language } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const categories = categoriesQuery.data ?? [];
   const [details, setDetails] = useState(false);
   const { control, handleSubmit, setValue, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { amount: '', categoryId: '', title: '', note: '', date: today() } });
   const selected = useWatch({ control, name: 'categoryId' });
-  const mutation = useMutation({ mutationFn: createExpense });
+  const mutation = useMutation({ mutationKey: ['create-expense'], mutationFn: createExpense });
 
   const submit = handleSubmit(async (values) => {
     const amount = parseMoney(values.amount);
@@ -35,14 +37,14 @@ export default function ExpenseSheet() {
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['expenses'] }), queryClient.invalidateQueries({ queryKey: ['dashboard'] }), queryClient.invalidateQueries({ queryKey: ['categories'] }), queryClient.invalidateQueries({ queryKey: ['settings'] })]);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissTo({ pathname: '/(tabs)/expenses', params: { saved: expenseId } });
-    } catch (error) { Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.'); }
+    } catch (error) { void recordError('Save expense', error); Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.'); }
   });
 
   return <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       <Text style={uiStyles.title}>{t('quickExpense')}</Text>
       <Controller control={control} name="amount" render={({ field: { value, onChange } }) => <View style={styles.amountWrap}><TextInput autoFocus value={value} onChangeText={(next) => onChange(formatMoneyInput(next))} keyboardType="number-pad" placeholder="0" placeholderTextColor={colors.secondary} selectionColor={colors.primary} style={styles.amountInput} /><Text style={styles.currency}>UZS</Text></View>} />
-      <View style={styles.categories}><Text style={uiStyles.label}>{t('category')}</Text><View style={styles.chips}>{categories.map((category) => <Pressable key={category.id} onPress={() => setValue('categoryId', category.id, { shouldValidate: true })} style={[styles.category, selected === category.id && styles.categorySelected]}><View style={[styles.categoryDot, { backgroundColor: category.color }]} /><Text numberOfLines={1} style={styles.categoryText}>{language === 'uz' && category.nameUz.trim() ? category.nameUz : category.nameEn}</Text></Pressable>)}</View>{errors.categoryId ? <Text style={styles.error}>Choose a category.</Text> : null}</View>
+      <View style={styles.categories}><Text style={uiStyles.label}>{t('category')}</Text>{categoriesQuery.isLoading ? <LoadingBlock label="Loading categories…" /> : categoriesQuery.error ? <ErrorBlock message="Categories could not be loaded." onRetry={() => { void categoriesQuery.refetch(); }} /> : <View style={styles.chips}>{categories.map((category) => <Pressable key={category.id} onPress={() => setValue('categoryId', category.id, { shouldValidate: true })} style={[styles.category, selected === category.id && styles.categorySelected]}><View style={[styles.categoryDot, { backgroundColor: category.color }]} /><Text numberOfLines={1} style={styles.categoryText}>{language === 'uz' && category.nameUz.trim() ? category.nameUz : category.nameEn}</Text></Pressable>)}</View>}{errors.categoryId ? <Text style={styles.error}>Choose a category.</Text> : null}</View>
       <Pressable onPress={() => setDetails((value) => !value)} style={styles.detailsButton}><Text style={styles.detailsText}>{details ? '−' : '+'} {t('moreDetails')}</Text></Pressable>
       {details ? <View style={styles.details}>
         <Controller control={control} name="title" render={({ field: { value, onChange } }) => <Field label={t('title')} value={value} onChangeText={onChange} placeholder="Optional" />} />

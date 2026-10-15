@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, EmptyState, Fab, Header, ListRow } from '@/components/ui';
+import { Card, EmptyState, ErrorBlock, Fab, Header, ListRow, LoadingBlock } from '@/components/ui';
 import { PeriodSelector } from '@/components/controls';
 import { deleteExpense, getSettings, listCategories, listExpenses } from '@/data/repository';
 import { formatMoney, today } from '@/domain/money';
@@ -21,10 +21,12 @@ export default function ExpensesScreen() {
   const [categoryId, setCategoryId] = useState('');
   const [period, setPeriod] = useState(() => createPeriodSelection('week', today()));
   const range = useMemo(() => resolvePeriodRange(period), [period]);
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
-  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories });
-  const { data: expenses = [] } = useQuery({ queryKey: ['expenses', search, categoryId, range.startDate, range.endDate], queryFn: () => listExpenses(search, categoryId || undefined, range) });
-  const remove = useMutation({ mutationFn: deleteExpense, onSuccess: async () => queryClient.invalidateQueries() });
+  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const expensesQuery = useQuery({ queryKey: ['expenses', search, categoryId, range.startDate, range.endDate], queryFn: () => listExpenses(search, categoryId || undefined, range) });
+  const settings = settingsQuery.data; const categories = categoriesQuery.data ?? [];
+  const expenses = useMemo(() => expensesQuery.data ?? [], [expensesQuery.data]);
+  const remove = useMutation({ mutationKey: ['delete-expense'], mutationFn: deleteExpense, onSuccess: async () => queryClient.invalidateQueries(), onError: () => Alert.alert('Expense', 'The expense could not be deleted. The error was saved locally.') });
 
   useEffect(() => {
     if (params.compose === '1' && !opened.current) { opened.current = true; router.push('/expense-sheet'); }
@@ -60,7 +62,7 @@ export default function ExpensesScreen() {
     <SectionList sections={sections} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} stickySectionHeadersEnabled
       renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}
       renderItem={({ item }) => <Card style={styles.rowCard}><ListRow title={item.title} subtitle={language === 'uz' ? item.categoryNameUz || item.categoryNameEn || undefined : item.categoryNameEn ?? undefined} value={`−${money(item.amount)}`} color={item.categoryColor ?? colors.secondary} onLongPress={() => confirmDelete(item.id)} /></Card>}
-      ListEmptyComponent={<EmptyState title={t('emptyExpenses')} />} />
+      ListEmptyComponent={expensesQuery.isLoading || categoriesQuery.isLoading ? <LoadingBlock label="Loading expenses…" /> : expensesQuery.error || categoriesQuery.error ? <ErrorBlock message="Expenses could not be loaded. The error was saved locally." onRetry={() => { void expensesQuery.refetch(); void categoriesQuery.refetch(); }} /> : <EmptyState title={t('emptyExpenses')} />} />
     {params.saved ? <View style={styles.snackbar}><Text style={styles.snackbarText}>{t('saved')}</Text><Pressable onPress={() => { remove.mutate(params.saved ?? ''); router.setParams({ saved: '' }); }}><Text style={styles.undo}>{t('undo')}</Text></Pressable></View> : null}
     <Fab label={t('quickExpense')} onPress={() => router.push('/expense-sheet')} />
   </SafeAreaView>;

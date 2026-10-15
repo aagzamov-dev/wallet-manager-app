@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Header, ListRow, Screen, uiStyles } from '@/components/ui';
+import { Card, ErrorBlock, Header, ListRow, LoadingBlock, Screen, uiStyles } from '@/components/ui';
 import { PeriodSelector } from '@/components/controls';
 import { getDashboard, getSettings } from '@/data/repository';
 import { formatMoney, today } from '@/domain/money';
@@ -17,15 +16,19 @@ export default function OverviewScreen() {
   const router = useRouter();
   const [period, setPeriod] = useState(() => createPeriodSelection('month', today()));
   const range = useMemo(() => resolvePeriodRange(period), [period]);
-  const { data } = useQuery({ queryKey: ['dashboard', range.startDate, range.endDate], queryFn: () => getDashboard(range) });
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const dashboardQuery = useQuery({ queryKey: ['dashboard', range.startDate, range.endDate], queryFn: () => getDashboard(range) });
+  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const data = dashboardQuery.data; const settings = settingsQuery.data;
   const money = (value: number) => formatMoney(value, settings?.displayCurrency, settings?.usdRateUzs);
   const maximum = Math.max(1, ...(data?.breakdown.flatMap((item) => [item.income, item.expenses]) ?? [1]));
   const net = (data?.income ?? 0) - (data?.expenses ?? 0);
   const activeLoans = (data?.loansGiven ?? 0) - (data?.loansReturned ?? 0);
 
+  if (dashboardQuery.isLoading || settingsQuery.isLoading) return <Screen><Header title={t('overview')} /><LoadingBlock label="Loading overview…" /></Screen>;
+  if (dashboardQuery.error || settingsQuery.error) return <Screen><Header title={t('overview')} /><ErrorBlock message="The overview could not be loaded. The error was saved locally." onRetry={() => { void dashboardQuery.refetch(); void settingsQuery.refetch(); }} /></Screen>;
+
   return <Screen>
-    <Header title={t('overview')} action={<Pressable accessibilityLabel={t('settings')} hitSlop={12} onPress={() => router.push('/settings')}><SymbolView name="gearshape.fill" tintColor={colors.secondary} size={24} /></Pressable>} />
+    <Header title={t('overview')} action={<Pressable accessibilityRole="button" accessibilityLabel={t('settings')} hitSlop={12} onPress={() => router.push('/settings')}><Text style={styles.settingsButton}>{t('settings')}</Text></Pressable>} />
     <LinearGradient colors={['#29476C', colors.elevated]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.wallet}>
       <Text style={uiStyles.label}>{t('walletBalance')}</Text>
       <Text adjustsFontSizeToFit numberOfLines={1} style={styles.walletAmount}>{money(data?.wallet ?? settings?.openingBalance ?? 0)}</Text>
@@ -65,4 +68,5 @@ const styles = StyleSheet.create({
   bars: { height: 76, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   bar: { width: 7, borderRadius: 4 },
   monthLabel: { color: colors.secondary, fontSize: 11 },
+  settingsButton: { minHeight: 48, color: colors.primary, fontSize: 14, fontWeight: '700', textAlignVertical: 'center' },
 });

@@ -9,6 +9,7 @@ import { Field, PrimaryButton, uiStyles } from '@/components/ui';
 import { MoneyField } from '@/components/controls';
 import { createIncome } from '@/data/repository';
 import { parseMoney, today } from '@/domain/money';
+import { recordError } from '@/errors/error-log';
 import { useI18n } from '@/i18n/provider';
 import { colors, spacing } from '@/theme/tokens';
 
@@ -18,11 +19,11 @@ type FormValues = z.infer<typeof schema>;
 export default function IncomeSheet() {
   const { t } = useI18n(); const router = useRouter(); const queryClient = useQueryClient();
   const { control, handleSubmit, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { amount: '', title: '', note: '', date: today() } });
-  const mutation = useMutation({ mutationFn: createIncome });
+  const mutation = useMutation({ mutationKey: ['create-income'], mutationFn: createIncome });
   const submit = handleSubmit(async (values) => {
     const amount = parseMoney(values.amount); if (!amount) return Alert.alert(t('amount'), 'Enter an amount greater than zero.');
     try { await mutation.mutateAsync({ ...values, amount }); await queryClient.invalidateQueries(); await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back(); }
-    catch (error) { Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.'); }
+    catch (error) { void recordError('Save income', error); Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.'); }
   });
   return <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
     <Text style={uiStyles.title}>{t('addIncome')}</Text>

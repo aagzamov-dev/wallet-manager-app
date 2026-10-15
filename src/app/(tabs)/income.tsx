@@ -3,7 +3,7 @@ import { Alert, Pressable, SectionList, StyleSheet, Text, TextInput, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, EmptyState, Fab, Header, ListRow } from '@/components/ui';
+import { Card, EmptyState, ErrorBlock, Fab, Header, ListRow, LoadingBlock } from '@/components/ui';
 import { PeriodSelector } from '@/components/controls';
 import { deleteIncome, getSettings, listIncome } from '@/data/repository';
 import { formatMoney, today } from '@/domain/money';
@@ -18,9 +18,10 @@ export default function IncomeScreen() {
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState(() => createPeriodSelection('month', today()));
   const range = useMemo(() => resolvePeriodRange(period), [period]);
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
-  const { data: income = [] } = useQuery({ queryKey: ['income', search, range.startDate, range.endDate], queryFn: () => listIncome(search, range) });
-  const remove = useMutation({ mutationFn: deleteIncome, onSuccess: async () => queryClient.invalidateQueries() });
+  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const incomeQuery = useQuery({ queryKey: ['income', search, range.startDate, range.endDate], queryFn: () => listIncome(search, range) });
+  const settings = settingsQuery.data; const income = incomeQuery.data ?? [];
+  const remove = useMutation({ mutationKey: ['delete-income'], mutationFn: deleteIncome, onSuccess: async () => queryClient.invalidateQueries(), onError: () => Alert.alert('Income', 'The income record could not be deleted. The error was saved locally.') });
   const grouped = new Map<string, typeof income>();
   income.forEach((item) => grouped.set(item.date, [...(grouped.get(item.date) ?? []), item]));
   const sections = [...grouped.entries()].map(([title, data]) => ({ title, data }));
@@ -30,7 +31,7 @@ export default function IncomeScreen() {
   const periodTotal = income.reduce((sum, item) => sum + item.amount, 0);
   return <SafeAreaView edges={['top']} style={styles.page}>
     <View style={styles.top}><Header title={t('income')} action={<Pressable onPress={() => router.push('/settings')}><Text style={styles.action}>{t('settings')}</Text></Pressable>} /><PeriodSelector value={period} onChange={setPeriod} /><TextInput value={search} onChangeText={setSearch} placeholder={t('search')} placeholderTextColor={colors.secondary} style={styles.search} /><View style={styles.summary}><Text style={styles.summaryLabel}>{income.length} records</Text><Text style={styles.summaryValue}>+{money(periodTotal)}</Text></View></View>
-    <SectionList sections={sections} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>} renderItem={({ item }) => <Card style={styles.rowCard}><ListRow title={item.title} subtitle={item.note ?? undefined} value={`+${money(item.amount)}`} color={colors.success} onLongPress={() => confirmDelete(item.id)} /></Card>} ListEmptyComponent={<EmptyState title={t('emptyIncome')} />} />
+    <SectionList sections={sections} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>} renderItem={({ item }) => <Card style={styles.rowCard}><ListRow title={item.title} subtitle={item.note ?? undefined} value={`+${money(item.amount)}`} color={colors.success} onLongPress={() => confirmDelete(item.id)} /></Card>} ListEmptyComponent={incomeQuery.isLoading ? <LoadingBlock label="Loading income…" /> : incomeQuery.error ? <ErrorBlock message="Income could not be loaded. The error was saved locally." onRetry={() => { void incomeQuery.refetch(); }} /> : <EmptyState title={t('emptyIncome')} />} />
     <Fab label={t('addIncome')} onPress={() => router.push('/income-sheet')} />
   </SafeAreaView>;
 }
