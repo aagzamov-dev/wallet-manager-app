@@ -1,4 +1,4 @@
-# My Money Manager
+# Wallet Manager
 
 Private, Android-first personal finance app. All financial data stays on the phone in SQLite; the app has no backend, account, sync, or analytics. Network access is used only to download signed Expo app updates.
 

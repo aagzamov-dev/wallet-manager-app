@@ -58,7 +58,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   }, []);
   const unlockWithBiometrics = useCallback(async () => {
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock My Money Manager', promptSubtitle: 'Use fingerprint, face, or your Android screen lock',
+      promptMessage: 'Unlock Wallet Manager', promptSubtitle: 'Use fingerprint, face, or your Android screen lock',
       cancelLabel: 'Use app PIN', disableDeviceFallback: false, biometricsSecurityLevel: 'strong',
     });
     if (result.success) setStatus('unlocked');

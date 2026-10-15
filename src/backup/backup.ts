@@ -9,12 +9,14 @@ import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { fromByteArray, toByteArray } from 'base64-js';
 import { z } from 'zod';
-import { dumpDatabase, markBackedUp } from '@/data/repository';
+import { dumpDatabase } from '@/data/repository';
 import { getDatabase } from '@/data/database';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const BACKUP_KEY = 'mymoney.internal-backup-key.v1';
+const BACKUP_PASSWORD_KEY = 'mymoney.backup-password.v1';
+const secureStoreOptions: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timestamp = z.string().datetime();
 const nullableText = z.string().nullable();
@@ -76,6 +78,19 @@ async function passwordKey(password: string, salt: Uint8Array, iterations: numbe
   return AESEncryptionKey.import(bytes);
 }
 
+export async function hasSavedBackupPassword(): Promise<boolean> {
+  return Boolean(await SecureStore.getItemAsync(BACKUP_PASSWORD_KEY, secureStoreOptions));
+}
+
+export async function getSavedBackupPassword(): Promise<string | null> {
+  return SecureStore.getItemAsync(BACKUP_PASSWORD_KEY, secureStoreOptions);
+}
+
+export async function saveBackupPassword(password: string): Promise<void> {
+  if (password.length < 8) throw new Error('Use a backup password with at least 8 characters.');
+  await SecureStore.setItemAsync(BACKUP_PASSWORD_KEY, password, secureStoreOptions);
+}
+
 export async function encryptBackup(document: BackupDocument, password: string): Promise<string> {
   if (password.length < 8) throw new Error('Use a backup password with at least 8 characters.');
   const salt = await Crypto.getRandomBytesAsync(16); const iterations = 310_000;
@@ -101,14 +116,16 @@ function writeCacheFile(name: string, contents: string): File {
 
 export async function exportPlainBackup(): Promise<void> {
   const document = await createDocument();
-  const file = writeCacheFile(`my-money-${document.exportedAt.slice(0, 10)}.json`, JSON.stringify(document, null, 2));
-  await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save My Money Manager backup' }); await markBackedUp();
+  const file = writeCacheFile(`wallet-manager-${document.exportedAt.slice(0, 10)}.json`, JSON.stringify(document, null, 2));
+  if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+  await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save Wallet Manager backup' });
 }
 
 export async function exportEncryptedBackup(password: string): Promise<void> {
   const document = await createDocument(); const contents = await encryptBackup(document, password);
-  const file = writeCacheFile(`my-money-${document.exportedAt.slice(0, 10)}.mymoney`, contents);
-  await Sharing.shareAsync(file.uri, { mimeType: 'application/octet-stream', dialogTitle: 'Save encrypted My Money Manager backup' }); await markBackedUp();
+  const file = writeCacheFile(`wallet-manager-${document.exportedAt.slice(0, 10)}.mymoney`, contents);
+  if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+  await Sharing.shareAsync(file.uri, { mimeType: 'application/octet-stream', dialogTitle: 'Choose Google Drive to save your encrypted backup' });
 }
 
 export async function pickBackup(): Promise<{ contents: string; encrypted: boolean } | null> {
@@ -131,7 +148,7 @@ export function backupSummary(document: BackupDocument): string {
 async function createSafetySnapshot(): Promise<void> {
   const document = await createDocument();
   let keyRaw = await SecureStore.getItemAsync(BACKUP_KEY);
-  if (!keyRaw) { keyRaw = fromByteArray(await Crypto.getRandomBytesAsync(32)); await SecureStore.setItemAsync(BACKUP_KEY, keyRaw, { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }); }
+  if (!keyRaw) { keyRaw = fromByteArray(await Crypto.getRandomBytesAsync(32)); await SecureStore.setItemAsync(BACKUP_KEY, keyRaw, secureStoreOptions); }
   const key = await AESEncryptionKey.import(keyRaw, 'base64');
   const sealed = await aesEncryptAsync(textEncoder.encode(JSON.stringify(document)), key, { nonce: { length: 12 }, tagLength: 16 });
   const directory = new Directory(Paths.document, 'safety-backups'); directory.create({ idempotent: true, intermediates: true });
