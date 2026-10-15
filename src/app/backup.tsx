@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Alert, InteractionManager, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,11 +7,9 @@ import {
   decryptBackup,
   exportEncryptedBackup,
   exportPlainBackup,
-  getSavedBackupPassword,
   hasSavedBackupPassword,
   parsePlainBackup,
   pickBackup,
-  prepareSavedBackupPassword,
   replaceFromBackup,
   saveBackupPassword,
   type BackupDocument,
@@ -36,14 +34,6 @@ export default function BackupScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
-
-  useEffect(() => {
-    if (!passwordConfigured) return undefined;
-    const task = InteractionManager.runAfterInteractions(() => {
-      void prepareSavedBackupPassword().catch((error: unknown) => { void recordError('Prepare backup security', error); });
-    });
-    return () => task.cancel();
-  }, [passwordConfigured]);
 
   const closePassword = () => {
     setPasswordAction(null);
@@ -99,13 +89,12 @@ export default function BackupScreen() {
   const saveToDrive = async () => {
     if (busyLabel || restoring) return;
     try {
-      const savedPassword = await getSavedBackupPassword();
-      if (!savedPassword) {
+      if (!passwordConfigured) {
         setPasswordAction({ type: 'configure' });
         return;
       }
       setBusyLabel('Preparing encrypted backup…');
-      await exportEncryptedBackup(savedPassword);
+      await exportEncryptedBackup();
       confirmBackupSaved(true);
     } catch (error) {
       void recordError('Export encrypted backup', error);

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wallet Manager",
     "slug": "my-money",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "orientation": "portrait",
     "icon": "./assets/images/my-money-icon.png",
     "scheme": "mymoney",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.mymoney.mobile",
-      "versionCode": 5,
+      "versionCode": 6,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#18212C",

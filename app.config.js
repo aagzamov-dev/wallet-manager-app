@@ -11,6 +11,7 @@ module.exports = ({ config }) => {
     ...config,
     plugins: [
       ...plugins,
+      "react-native-quick-crypto",
       [
         "expo-build-properties",
         {

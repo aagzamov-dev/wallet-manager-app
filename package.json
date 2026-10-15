@@ -1,7 +1,7 @@
 {
   "name": "my-money-mobile",
   "main": "expo-router/entry",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@noble/hashes": "^2.4.0",
@@ -32,6 +32,7 @@
     "react-hook-form": "^7.90.0",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
+    "react-native-quick-crypto": "^1.1.8",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",

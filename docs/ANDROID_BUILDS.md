@@ -57,7 +57,7 @@ Release code minification and unused-resource shrinking are enabled for all rele
 
 Before building a new native release:
 
-1. Increase `expo.version` in `app.json`, for example from `1.4.0` to `1.4.1`.
+1. Increase `expo.version` in `app.json`, for example from `1.4.1` to `1.4.2`.
 2. Increase `android.versionCode` in `app.json` by at least one.
 3. Keep the Android package `com.mymoney.mobile` unchanged.
 4. Keep using the same Expo project and Android signing key.
@@ -88,7 +88,7 @@ For JavaScript, styles, translations, and bundled images that do not change nati
 npm run update:production -- --message "Describe the update"
 ```
 
-The Xiaomi profile uses the `production` channel. Because the runtime policy follows the app version, an update published for `1.4.0` is delivered only to compatible `1.4.0` installations.
+The Xiaomi profile uses the `production` channel. Because the runtime policy follows the app version, an update is delivered only to installations with the same compatible app version.
 
 Use a new APK instead when changing:
 
